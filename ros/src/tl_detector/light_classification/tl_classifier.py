@@ -9,7 +9,7 @@ class TLClassifier(object):
         self.count = 0
         pass
 
-    def get_classification(self, image, id):
+    def get_classification(self, image):
         """Determines the color of the traffic light in the image
 
         Args:
@@ -22,7 +22,7 @@ class TLClassifier(object):
         # make dataset
         if self.count == 3:
             filename = "tl_images/{}.jpg".format(time.time())
-            cv2.imwrite(filename, image)
+            # cv2.imwrite(filename, image)
             rospy.loginfo("Saved image")
             self.count = 0
 
