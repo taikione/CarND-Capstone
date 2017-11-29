@@ -130,7 +130,7 @@ class WaypointUpdater(object):
     def get_smooth_waypoints_coordinates(self, start_index, wps_distance):
 
         # backward_wp = self.decimating_waypoints(start_index-1, 1.0, wps_distance, False)
-        forward_wp = self.decimating_waypoints(start_index, 1.0, wps_distance, True)
+        forward_wp = self.get_sparsed_waypoints(start_index, 1.0, wps_distance, True)
         # forward_wp = self.decimating_waypoints(start_index, 0.3, wps_distance, True)
 
         # the case of backward waypoints
@@ -145,7 +145,7 @@ class WaypointUpdater(object):
 
         return forward_wp
 
-    def decimating_waypoints(self, start_index, distances, total_distance, forward=True):
+    def get_sparsed_waypoints(self, start_index, distances, total_distance, forward=True):
 
         waypoints = []
         index = start_index
