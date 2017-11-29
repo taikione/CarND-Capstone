@@ -111,8 +111,8 @@ class WaypointUpdater(object):
     def waypoints_cb(self, waypoints):
         # TODO: Implement
         self.basewaypoints = waypoints.waypoints
-        self.basewaypoint_xs = [wp.pose.pose.position.x for wp in self.basewaypoints]
-        self.basewaypoint_ys = [wp.pose.pose.position.y for wp in self.basewaypoints]
+        self.basewaypoint_xs = np.array([wp.pose.pose.position.x for wp in self.basewaypoints])
+        self.basewaypoint_ys = np.array([wp.pose.pose.position.y for wp in self.basewaypoints])
 
     def get_waypoints(self, smooth_waypoints):
 
@@ -145,7 +145,17 @@ class WaypointUpdater(object):
 
         return forward_wp
 
-    def get_sparsed_waypoints(self, start_index, distances, total_distance, forward=True):
+    def get_sparsed_waypoints(self, start_index, min_distances, total_distance, forward=True):
+        """
+        Create a list of sparse waypoints starting from start_index. The distance between
+        each waypoints is setted larger than min_distances
+        :param start_index: int
+        :param min_distances: float
+        :param total_distance: float representing distance to farthest waypoint
+        :param forward: bool. if forward is True, create a list of waypoints towards the ahead of vehicle.
+        :return: list of waypoints
+        Note: This function is necessary to remove the noise included in the waypoints.
+        """
 
         waypoints = []
         index = start_index
@@ -163,7 +173,7 @@ class WaypointUpdater(object):
 
                 translated_current_x, _ = self.get_frenet_coordinate(self.current_position)
                 translated_next_x, _ = self.get_frenet_coordinate(waypoints[-1].pose)
-                distance += (translated_next_x - translated_current_x)
+                distance += abs(translated_next_x - translated_current_x)
 
                 # logging
                 # rospy.loginfo("base_idx:{}, wps_dist:{}".format(base_wp_index, distance))
@@ -185,7 +195,7 @@ class WaypointUpdater(object):
 
                 wps_distance = abs(translated_target_x - translated_base_x)
 
-                if wps_distance > distances:
+                if wps_distance > min_distances:
                     waypoints.append(target)
 
                     # for logging
@@ -212,8 +222,15 @@ class WaypointUpdater(object):
         return waypoints
 
     def get_closest_waypoint_index(self):
+        """
+        Return the index of waypoint closest to current vehicle posistion.
+        :return: int representing closest waypoint index
+        """
 
-        distances = [self.get_distance_to_waypoints(waypoint.pose, self.current_position) for waypoint in self.basewaypoints]
+        diff_xs = self.basewaypoint_xs - self.current_position.pose.position.x
+        diff_ys = self.basewaypoint_ys - self.current_position.pose.position.y
+
+        distances = [math.sqrt(x**2 + y**2) for x, y in zip(diff_xs, diff_ys)]
 
         closest_waypoint_index = np.argmin(distances)
 
@@ -367,7 +384,10 @@ class WaypointUpdater(object):
         :return: index representing closest waypoint
         """
 
-        distances = [self.get_distance_to_waypoints(target_wp, base_waypoint.pose) for base_waypoint in self.basewaypoints]
+        diff_xs = self.basewaypoint_xs - target_wp.pose.position.x
+        diff_ys = self.basewaypoint_ys - target_wp.pose.position.y
+
+        distances = [math.sqrt(x**2 + y**2) for x, y in zip(diff_xs, diff_ys)]
         closest_wp_index = np.argmin(distances)
 
         closest_wp = self.basewaypoints[closest_wp_index]
