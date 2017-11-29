@@ -9,7 +9,8 @@ import math
 
 GAS_DENSITY = 2.858
 ONE_MPH = 0.44704 # miles per hour to meters per second
-MIN_SPEED = 0
+MINVELOCITY = 0
+MAXVELOCITY = 20 * 0.44 # 20kmph to mph
 STEER_MAX = 1.0
 
 
@@ -74,7 +75,7 @@ class Controller(object):
                 brake = self.get_brake_value(twist_cmd, current_velocity)
                 brake = self.brake_pid.step(brake, dt)
 
-            elif current_velocity.twist.linear.x > 8.8:
+            elif current_velocity.twist.linear.x > MAXVELOCITY:
                 throttle = 0
                 brake = self.brake_pid.step(-5, dt)
 

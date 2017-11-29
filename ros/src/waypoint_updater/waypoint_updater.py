@@ -9,7 +9,6 @@ import numpy as np
 import math
 import tf
 import time
-from functools import wraps
 
 '''
 This node will publish waypoints from the car's current position to some `x` distance ahead.
@@ -71,33 +70,15 @@ class WaypointUpdater(object):
 
             current_time = time.time()
 
-            pose_time = time.time()
             self.yaw = self.get_current_car_direction()
-            rospy.loginfo("duration get_yaw:{}".format(time.time() - pose_time))
-
-            pose_time = time.time()
             self.closest_wp_index = self.get_closest_waypoint_index()
-            rospy.loginfo("duration get_closest_waypoint_index:{}".format(time.time() - pose_time))
 
-            pose_time = time.time()
             smooth_waypoints  = self.get_smooth_waypoints_coordinates(self.closest_wp_index, LOOKAHEAD_WPS_DIST)
-            rospy.loginfo("duration get_smooth_waypoints_cord:{}".format(time.time() - pose_time))
-
-            pose_time = time.time()
             final_waypoints = self.get_waypoints(smooth_waypoints)
-            rospy.loginfo("duration get_waypoints:{}".format(time.time() - pose_time))
-
-            pose_time = time.time()
             self.final_waypoints_pub.publish(final_waypoints)
-            rospy.loginfo("duration final_wp publish:{}".format(time.time() - pose_time))
 
-            pose_time = time.time()
             cte = self.get_cte(smooth_waypoints)
-            rospy.loginfo("duration get_cte:{}".format(time.time() - pose_time))
-
-            pose_time = time.time()
             self.cte_pub.publish(cte)
-            rospy.loginfo("duration publish cte:{}".format(time.time() - pose_time))
 
             # rospy.loginfo("yaw:{}, cte:{}, s_wp_len:{}".format(self.yaw*180/3.14, cte, len(smooth_waypoints)))
             rospy.loginfo("1 iter duration time:{}\n".format(time.time() - current_time))
@@ -107,12 +88,14 @@ class WaypointUpdater(object):
     def pose_cb(self, msg):
         # TODO: Implement
         self.current_position = msg
+        self.current_pose_xy = np.array([msg.pose.position.x, msg.pose.position.y])
 
     def waypoints_cb(self, waypoints):
         # TODO: Implement
         self.basewaypoints = waypoints.waypoints
         self.basewaypoint_xs = np.array([wp.pose.pose.position.x for wp in self.basewaypoints])
         self.basewaypoint_ys = np.array([wp.pose.pose.position.y for wp in self.basewaypoints])
+        self.basewaypoints_coordinates = np.dstack([self.basewaypoint_xs, self.basewaypoint_ys])[0]
 
     def get_waypoints(self, smooth_waypoints):
 
@@ -126,6 +109,19 @@ class WaypointUpdater(object):
              final_waypoints.waypoints.append(final_waypoint)
 
         return final_waypoints
+
+    def get_polynomial(self, waypoints):
+
+        wp_xs = [wp.pose.pose.position.x for wp in waypoints]
+        wp_ys = [wp.pose.pose.position.y for wp in waypoints]
+
+        try:
+            poly = np.polyfit(wp_xs, wp_ys, DEG)
+
+        except np.RankWarning as e:
+            rospy.loginfo("error: {}".format(e))
+
+        return poly
 
     def get_smooth_waypoints_coordinates(self, start_index, wps_distance):
 
@@ -207,6 +203,9 @@ class WaypointUpdater(object):
                     # rospy.loginfo("base_idx:{}, base_x:{}, base_y:{}, target_idx:{}, target_x:{}, target_y:{}, tr_dist:{:.3f}, orgn_dist:{:.3f}".format(
                     # base_wp_index, base_x, base_y, index, target_x, target_y, wps_distance, target_x - base_x))
 
+                    rospy.loginfo("base_idx:{}, target_idx:{}, wps_disntace:{}".format(
+                        base_wp_index, index, wps_distance))
+
                     base_wp_index = index
 
                     distance += wps_distance
@@ -227,10 +226,7 @@ class WaypointUpdater(object):
         :return: int representing closest waypoint index
         """
 
-        diff_xs = self.basewaypoint_xs - self.current_position.pose.position.x
-        diff_ys = self.basewaypoint_ys - self.current_position.pose.position.y
-
-        distances = [math.sqrt(x**2 + y**2) for x, y in zip(diff_xs, diff_ys)]
+        distances = np.sqrt(np.sum(np.power(self.basewaypoints_coordinates - self.current_pose_xy, 2), axis=1))
 
         closest_waypoint_index = np.argmin(distances)
 
@@ -281,16 +277,13 @@ class WaypointUpdater(object):
         :return: vehicle's coordinates
         """
 
-        current_x = self.current_position.pose.position.x
-        current_y = self.current_position.pose.position.y
-
         translated_ptsx = []
         translated_ptsy = []
 
         for wp in waypoints:
 
-            ptsx = wp.pose.pose.position.x - current_x
-            ptsy = wp.pose.pose.position.y - current_y
+            ptsx = wp.pose.pose.position.x - self.current_pose_xy[0]
+            ptsy = wp.pose.pose.position.y - self.current_pose_xy[1]
 
             translated_ptsx.append(ptsx*math.cos(-self.yaw) - ptsy*math.sin(-self.yaw))
             translated_ptsy.append(ptsx*math.sin(-self.yaw) + ptsy*math.cos(-self.yaw))
@@ -384,15 +377,14 @@ class WaypointUpdater(object):
         :return: index representing closest waypoint
         """
 
-        diff_xs = self.basewaypoint_xs - target_wp.pose.position.x
-        diff_ys = self.basewaypoint_ys - target_wp.pose.position.y
+        target_xy = np.array([target_wp.pose.position.x, target_wp.pose.position.y])
+        distances = np.sqrt(np.sum(np.power(self.basewaypoints_coordinates - target_xy, 2), axis=1))
 
-        distances = [math.sqrt(x**2 + y**2) for x, y in zip(diff_xs, diff_ys)]
         closest_wp_index = np.argmin(distances)
 
         closest_wp = self.basewaypoints[closest_wp_index]
-        diff_x = self.current_position.pose.position.x - closest_wp.pose.pose.position.x
-        diff_y = self.current_position.pose.position.y - closest_wp.pose.pose.position.y
+        diff_x = self.current_pose_xy[0] - closest_wp.pose.pose.position.x
+        diff_y = self.current_pose_xy[1] - closest_wp.pose.pose.position.y
 
         heading = math.atan2(diff_y, diff_x)
         angle = abs(self.yaw - heading)
