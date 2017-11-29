@@ -25,8 +25,9 @@ TODO (for Yousuf and Aaron): Stopline location for each traffic light.
 '''
 
 LOOKAHEAD_WPS = 40 # Number of waypoints we will publish. You can change this number
-# LOOKAHEAD_WPS_DIST = 60.0
-LOOKAHEAD_WPS_DIST = 100.0
+# LOOKAHEAD_WPS_DIST = 40.0
+LOOKAHEAD_WPS_DIST = 60.0
+# LOOKAHEAD_WPS_DIST = 100.0
 RAD2DGREES = 57.32
 DEG = 3
 
@@ -147,22 +148,39 @@ class WaypointUpdater(object):
 
                 translated_base_x, _ = self.get_translated_waypoint(waypoints[-1])
                 distance += translated_base_x
-                rospy.loginfo("base_idx:{}, wps_dist:{}".format(base_wp_index, distance))
+                # rospy.loginfo("base_idx:{}, wps_dist:{}".format(base_wp_index, distance))
+                rospy.loginfo("base_idx:{}, base_x:{}, base_y:{}, wps_dist:{}".format(
+                    base_wp_index, self.basewaypoints[base_wp_index].pose.pose.position.x,
+                    self.basewaypoints[base_wp_index].pose.pose.position.y, distance))
 
             else:
 
                 base = self.basewaypoints[base_wp_index]
                 target = self.basewaypoints[index]
 
-                translated_base_x, _ = self.get_translated_waypoint(base)
-                translated_target_x, _ = self.get_translated_waypoint(target)
+                # rotate wps
+                # translated_base_x, _ = self.get_translated_waypoint(base)
+                # translated_target_x, _ = self.get_translated_waypoint(target)
+
+                # convert frenet
+                translated_base_x, _ = self.get_frenet_coordinate(base.pose, self.yaw, self.basewaypoints)
+                translated_target_x, _ = self.get_frenet_coordinate(target.pose, self.yaw, self.basewaypoints)
+
                 wps_distance = abs(translated_target_x - translated_base_x)
 
-                if wps_distance >= limit:
-                    waypoints.append(self.basewaypoints[index])
+
+                if wps_distance > limit:
+                    waypoints.append(target)
 
                     if base_wp_index > 4130: # for debug
-                        rospy.loginfo("base_idx:{}, target_idx:{}, wps_dist:{}".format(base_wp_index, index, wps_distance))
+                    # rospy.loginfo("base_idx:{}, target_idx:{}, wps_dist:{}".format(base_wp_index, index, wps_distance))
+                        base_x = base.pose.pose.position.x
+                        base_y = base.pose.pose.position.y
+                        target_x = target.pose.pose.position.x
+                        target_y = target.pose.pose.position.y
+
+                        rospy.loginfo("base_idx:{}, base_x:{}, base_y:{}, target_idx:{}, target_x:{}, target_y:{}, tr_dist:{}, orgn_dist:{}".format(
+                        base_wp_index, base_x, base_y, index, target_x, target_y, wps_distance, base_x - target_x))
 
                     base_wp_index = index
 
@@ -300,13 +318,82 @@ class WaypointUpdater(object):
     def set_waypoint_velocity(self, waypoints, waypoint, velocity):
         waypoints[waypoint].twist.twist.linear.x = velocity
 
-    def get_distance_to_waypoints(self, target_waypoint, current_waypoint):
+    def get_frenet_coordinate(self, target_waypoint, theta, base_waypoints):
 
-        target = target_waypoint.pose.position
-        current = current_waypoint.pose.position
+        next_wp_index = self.get_next_wp_index(target_waypoint, theta, base_waypoints)
+        prev_wp_index = next_wp_index - 1
 
-        diff_x = target.x - current.x
-        diff_y = target.y - current.y
+        if next_wp_index == 0:
+            prev_wp_index = len(base_waypoints) - 1
+
+        prev_wp_x = base_waypoints[prev_wp_index].pose.pose.position.x
+        prev_wp_y = base_waypoints[prev_wp_index].pose.pose.position.y
+
+        nx = base_waypoints[next_wp_index].pose.pose.position.x - prev_wp_x
+        ny = base_waypoints[next_wp_index].pose.pose.position.y - prev_wp_y
+        xx = target_waypoint.pose.position.x - prev_wp_x
+        xy = target_waypoint.pose.position.y - prev_wp_y
+
+        # find the projection of x onto n
+        proj_norm = (xx*nx + xy*ny) / (nx*nx + ny*ny)
+        proj_x = proj_norm*nx
+        proj_y = proj_norm*ny
+
+        frenet_d = get_distance(xx, xy, proj_x, proj_y)
+
+        center_x = 1000 - prev_wp_x
+        center_y = 2000 - prev_wp_y
+        center_to_pos = get_distance(center_x, center_y, xx, xy)
+        center_to_ref = get_distance(center_x, center_y, proj_x, proj_y)
+
+        if center_to_pos <= center_to_ref:
+            frenet_d *= -1
+
+        frenet_s = 0
+        index = 0
+
+        while index < prev_wp_index:
+
+            wp_x = base_waypoints[index].pose.pose.position.x
+            wp_y = base_waypoints[index].pose.pose.position.y
+
+            next_wp_x = base_waypoints[index+1].pose.pose.position.x
+            next_wp_y = base_waypoints[index+1].pose.pose.position.y
+
+            frenet_s += get_distance(wp_x, wp_y, next_wp_x, next_wp_y)
+            index += 1
+
+        frenet_s += get_distance(0, 0, proj_x, proj_y)
+
+        return frenet_s, frenet_d
+
+
+    def get_next_wp_index(self, current_waypoint, theta, base_waypoints):
+
+        distances = [self.get_distance_to_waypoints(current_waypoint, base_waypoint.pose) for base_waypoint in base_waypoints]
+        closest_wp_index = np.argmin(distances)
+
+        closest_wp = base_waypoints[closest_wp_index]
+
+        diff_x = current_waypoint.pose.position.x - closest_wp.pose.pose.position.x
+        diff_y = current_waypoint.pose.position.y - closest_wp.pose.pose.position.y
+
+        heading = math.atan2(diff_y, diff_x)
+        angle = abs(theta - heading)
+
+        if angle > (math.pi/4):
+            closest_wp_index += 1
+
+        return closest_wp_index
+
+
+    def get_distance_to_waypoints(self, waypoint1, waypoint2):
+
+        wp1_coordinate = waypoint1.pose.position
+        wp2_coordinate = waypoint2.pose.position
+
+        diff_x = wp1_coordinate.x - wp2_coordinate.x
+        diff_y = wp1_coordinate.y - wp2_coordinate.y
 
         return math.sqrt(diff_x**2 + diff_y**2)
 
@@ -317,6 +404,14 @@ class WaypointUpdater(object):
             dist += dl(waypoints[wp1].pose.pose.position, waypoints[i].pose.pose.position)
             wp1 = i
         return dist
+
+
+def get_distance(x1, y1, x2, y2):
+
+    diff_x = x2 - x1
+    diff_y = y2 - y1
+
+    return math.sqrt(diff_x**2 + diff_y**2)
 
 
 if __name__ == '__main__':
