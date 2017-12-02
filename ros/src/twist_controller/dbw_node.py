@@ -1,10 +1,11 @@
 #!/usr/bin/env python
 
 import rospy
-from std_msgs.msg import Bool
+from std_msgs.msg import Bool, Float64
 from dbw_mkz_msgs.msg import ThrottleCmd, SteeringCmd, BrakeCmd, SteeringReport
 from geometry_msgs.msg import TwistStamped
 import math
+import os.path
 
 from twist_controller import Controller
 
@@ -54,17 +55,24 @@ class DBWNode(object):
                                          BrakeCmd, queue_size=1)
 
         # Create `TwistController` object
-        self.controller = Controller(steer_ratio)
+        self.controller = Controller(steer_ratio, wheel_base, max_lat_accel, max_steer_angle,
+                                     decel_limit, accel_limit)
 
         # Subscribe to all necessary topics
         rospy.Subscriber('/twist_cmd', TwistStamped, self.upd_twist)
         rospy.Subscriber('/current_velocity', TwistStamped, self.upd_velocity)
         rospy.Subscriber('/vehicle/dbw_enabled', Bool, self.upd_dbw_enabled)
+        rospy.Subscriber('/cross_track_error', Float64, self.cte_cb)
 
         # Record data from subscribers
         self.twist_cmd = None
         self.current_velocity = None
         self.dbw_enabled = None
+        self.cte = None
+
+        self.log_to_csv = True
+        if self.log_to_csv:
+            self.log_handle = self.log_init('~/CarND_performance.csv')
 
         self.loop()
 
@@ -72,11 +80,15 @@ class DBWNode(object):
         rate = rospy.Rate(50) # 50Hz
         while not rospy.is_shutdown():
 
-            if all([self.twist_cmd, self.current_velocity, self.dbw_enabled]):    # Ensure values have been initialized
+            if all([self.twist_cmd, self.current_velocity, self.dbw_enabled, self.cte]):    # Ensure values have been initialized
 
                 # Get predicted throttle, brake and steering
                 throttle, brake, steering = self.controller.control(self.twist_cmd.linear.x,
-                    self.twist_cmd.angular.z, self.current_velocity.linear.x, self.dbw_enabled)
+                    self.twist_cmd.angular.z, self.current_velocity.linear.x, self.dbw_enabled, self.cte)
+
+                if self.log_to_csv:
+                    self.log_data(self.twist_cmd.linear.x, self.twist_cmd.angular.z, self.current_velocity.linear.x,
+                                self.dbw_enabled, throttle, brake, steering)
 
                 # Ensure dbw is enabled (not manual mode)
                 if self.dbw_enabled:
@@ -119,6 +131,19 @@ class DBWNode(object):
         loginfo = 'dbw {}'.format(self.dbw_enabled)
         rospy.loginfo_throttle(1, loginfo)
 
+    def log_init(self, log_path):
+        log_path = os.path.expanduser(log_path)  # if home directory "~" is used
+        log_handle = open(log_path, 'w')
+        headers = ','.join(
+            ["Target speed", "Target yaw", "Current speed", "DBW status", "Throttle", "Brake", "Steering"])
+        log_handle.write(headers + '\n')
+        return log_handle
+
+    def log_data(self, *args):
+        self.log_handle.write(','.join(str(arg) for arg in args) + '\n')
+
+    def cte_cb(self, cte):
+        self.cte = cte.data
 
 if __name__ == '__main__':
     DBWNode()
