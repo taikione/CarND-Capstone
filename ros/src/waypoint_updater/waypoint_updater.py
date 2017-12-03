@@ -25,7 +25,7 @@ as well as to verify your TL classifier.
 TODO (for Yousuf and Aaron): Stopline location for each traffic light.
 '''
 
-LOOKAHEAD_WPS = 50 # Number of waypoints we will publish. You can change this number
+LOOKAHEAD_WPS = 30 # Number of waypoints we will publish. You can change this number
 
 
 class WaypointUpdater(object):
@@ -35,6 +35,7 @@ class WaypointUpdater(object):
         self.wps = None
         self.final_wps = None
         self.first_pass = True
+        self.wps_len = None
         rospy.Subscriber('/current_pose', PoseStamped, self.pose_cb)
         rospy.Subscriber('/base_waypoints', Lane, self.waypoints_cb)
 
@@ -47,7 +48,7 @@ class WaypointUpdater(object):
 
     def loop(self):
 
-        rate = rospy.Rate(50)
+        rate = rospy.Rate(10)
 
         while not all([self.wps, self.ego_pos]):
 
@@ -108,6 +109,7 @@ class WaypointUpdater(object):
             # We need to get a full copy as otherwise we just get a reference
             self.wps = copy.copy(waypoints)
             self.final_wps = copy.copy(waypoints)
+            self.wps_len = len(self.wps.waypoints)
 
     def traffic_cb(self, msg):
         # TODO: Callback for /traffic_waypoint message. Implement
@@ -179,6 +181,9 @@ class WaypointUpdater(object):
         base_index = closest_waypoint_index
         target_index = closest_waypoint_index + 1
 
+        if self.wps_len <= target_index:
+            target_index = 0
+
         while len(waypoint_indices) < n_waypoints:
 
             base = self.wps.waypoints[base_index].pose.pose.position
@@ -197,6 +202,9 @@ class WaypointUpdater(object):
                 base_index = target_index
 
             target_index += 1
+
+            if self.wps_len <= target_index:
+                target_index = 0
 
         rospy.loginfo("index list:{}".format(waypoint_indices))
 
