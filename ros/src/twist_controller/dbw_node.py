@@ -71,7 +71,7 @@ class DBWNode(object):
         self.loop()
 
     def loop(self):
-        rate = rospy.Rate(50) # 50Hz
+        rate = rospy.Rate(10) # 10Hz
         while not rospy.is_shutdown():
 
             if all([self.twist_cmd, self.current_velocity, self.dbw_enabled, self.cte]):    # Ensure values have been initialized
