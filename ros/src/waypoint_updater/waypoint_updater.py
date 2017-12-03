@@ -35,57 +35,70 @@ class WaypointUpdater(object):
         self.wps = None
         self.final_wps = None
         self.first_pass = True
+        self.wps_len = None
         rospy.Subscriber('/current_pose', PoseStamped, self.pose_cb)
         rospy.Subscriber('/base_waypoints', Lane, self.waypoints_cb)
 
         # TODO: Add a subscriber for /traffic_waypoint and /obstacle_waypoint below
         self.final_waypoints_pub = rospy.Publisher('/final_waypoints', Lane, queue_size=1)
         self.cte_pub = rospy.Publisher('/cross_track_error', Float64, queue_size=1)
-        rospy.spin()
+        self.loop()
+
+    def loop(self):
+
+        rate = rospy.Rate(50)
+
+        while not all([self.wps, self.ego_pos]):
+
+            rate.sleep()
+
+        while not rospy.is_shutdown() and all([self.wps, self.ego_pos]):
+
+            if self.wps is not None:	#Don't proceed until we have received waypoints
+
+                # Get car orientation
+                car_x, car_y = self.ego_pos.position.x, self.ego_pos.position.y
+                quaternion = (self.ego_pos.orientation.x, self.ego_pos.orientation.y,
+                              self.ego_pos.orientation.z, self.ego_pos.orientation.w)
+                euler = tf.transformations.euler_from_quaternion(quaternion)
+                car_yaw = euler[2]
+
+                #return the index of the closest waypoint ahead of us
+                closest_idx_waypoint = self.closest_waypoint_ahead(car_x, car_y, car_yaw, self.wps.waypoints)
+                # get sparse waypoints indices
+                waypoint_idx_list = self.get_sparse_waypoint_indices(closest_idx_waypoint, LOOKAHEAD_WPS, 1.0, car_yaw)
+
+                #final waypoints is a subset of original set of waypoints
+                self.final_wps.waypoints = [self.wps.waypoints[index] for index in waypoint_idx_list]
+
+                #check we didn't reach the end of the list and otherwise loopback to start of the list
+                if len(self.final_wps.waypoints) < LOOKAHEAD_WPS:
+                    extra_points_needed = LOOKAHEAD_WPS - len(self.final_wps.waypoints)
+
+                    # we need to get points from the start of the list ensuring next point is closest ahead
+                    last_x = self.wps.waypoints[-1].pose.pose.position.x
+                    last_y = self.wps.waypoints[-1].pose.pose.position.y
+                    last_x2 = self.wps.waypoints[-2].pose.pose.position.x
+                    last_y2 = self.wps.waypoints[-2].pose.pose.position.y
+                    last_yaw = math.atan2(last_y - last_y2, last_x - last_x2)
+                    # we don't include last points of the list to ensure we go back to the beginning of the list
+                    first_extra_point = self.closest_waypoint_ahead(last_x, last_y, last_yaw, self.wps.waypoints[0:-10])
+
+                    #we complete our list to desired number of points
+                    self.final_wps.waypoints.extend(self.wps.waypoints[first_extra_point:first_extra_point+extra_points_needed])
+
+                if len(self.final_wps.waypoints) != LOOKAHEAD_WPS:
+                    rospy.logwarn("List of /final_waypoints does not contain target number of elements")
+
+                self.final_waypoints_pub.publish(self.final_wps)
+
+                current_cte = self.get_cte(self.final_wps.waypoints, car_yaw)
+                self.cte_pub.publish(current_cte)
+
+            rate.sleep()
 
     def pose_cb(self, msg):
         self.ego_pos = msg.pose
-
-        if self.wps is not None:	#Don't proceed until we have received waypoints
-
-            # Get car orientation
-            car_x, car_y = self.ego_pos.position.x, self.ego_pos.position.y
-            quaternion = (self.ego_pos.orientation.x, self.ego_pos.orientation.y,
-                        self.ego_pos.orientation.z, self.ego_pos.orientation.w)
-            euler = tf.transformations.euler_from_quaternion(quaternion)
-            car_yaw = euler[2]
-
-            #return the index of the closest waypoint ahead of us
-            closest_idx_waypoint = self.closest_waypoint_ahead(car_x, car_y, car_yaw, self.wps.waypoints)
-            # get sparse waypoints indices
-            waypoint_idx_list = self.get_sparse_waypoint_indices(closest_idx_waypoint, LOOKAHEAD_WPS, 1.0, car_yaw)
-
-            #final waypoints is a subset of original set of waypoints
-            self.final_wps.waypoints = [self.wps.waypoints[index] for index in waypoint_idx_list]
-
-            #check we didn't reach the end of the list and otherwise loopback to start of the list
-            if len(self.final_wps.waypoints) < LOOKAHEAD_WPS:
-                extra_points_needed = LOOKAHEAD_WPS - len(self.final_wps.waypoints)
-
-                # we need to get points from the start of the list ensuring next point is closest ahead
-                last_x = self.wps.waypoints[-1].pose.pose.position.x
-                last_y = self.wps.waypoints[-1].pose.pose.position.y
-                last_x2 = self.wps.waypoints[-2].pose.pose.position.x
-                last_y2 = self.wps.waypoints[-2].pose.pose.position.y
-                last_yaw = math.atan2(last_y - last_y2, last_x - last_x2)
-                # we don't include last points of the list to ensure we go back to the beginning of the list
-                first_extra_point = self.closest_waypoint_ahead(last_x, last_y, last_yaw, self.wps.waypoints[0:-10])
-
-                #we complete our list to desired number of points
-                self.final_wps.waypoints.extend(self.wps.waypoints[first_extra_point:first_extra_point+extra_points_needed])
-
-            if len(self.final_wps.waypoints) != LOOKAHEAD_WPS:
-                rospy.logwarn("List of /final_waypoints does not contain target number of elements")
-
-            self.final_waypoints_pub.publish(self.final_wps)
-
-            current_cte = self.get_cte(self.final_wps.waypoints, car_yaw)
-            self.cte_pub.publish(current_cte)
 
     def waypoints_cb(self, waypoints):
         # Ensure we only get initial full list of waypoints as simulator keeps publishing
