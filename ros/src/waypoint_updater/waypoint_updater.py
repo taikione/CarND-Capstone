@@ -3,10 +3,12 @@
 import rospy
 from geometry_msgs.msg import PoseStamped
 from styx_msgs.msg import Lane, Waypoint
+from std_msgs.msg import Float64
 
 import math
 import copy
 import tf.transformations   # to get Euler coordinates
+import numpy as np
 
 '''
 This node will publish waypoints from the car's current position to some `x` distance ahead.
@@ -38,20 +40,21 @@ class WaypointUpdater(object):
 
         # TODO: Add a subscriber for /traffic_waypoint and /obstacle_waypoint below
         self.final_waypoints_pub = rospy.Publisher('/final_waypoints', Lane, queue_size=1)
+        self.cte_pub = rospy.Publisher('/cross_track_error', Float64, queue_size=1)
         rospy.spin()
 
     def pose_cb(self, msg):
         self.ego_pos = msg.pose
 
         if self.wps is not None:	#Don't proceed until we have received waypoints
-            
+
             # Get car orientation
             car_x, car_y = self.ego_pos.position.x, self.ego_pos.position.y
             quaternion = (self.ego_pos.orientation.x, self.ego_pos.orientation.y,
                         self.ego_pos.orientation.z, self.ego_pos.orientation.w)
             euler = tf.transformations.euler_from_quaternion(quaternion)
             car_yaw = euler[2]
-            
+
             #return the index of the closest waypoint ahead of us
             closest_idx_waypoint = self.closest_waypoint_ahead(car_x, car_y, car_yaw, self.wps.waypoints)
 
@@ -78,6 +81,9 @@ class WaypointUpdater(object):
                 rospy.logwarn("List of /final_waypoints does not contain target number of elements")
 
             self.final_waypoints_pub.publish(self.final_wps)
+
+            current_cte = self.get_cte(self.final_wps.waypoints, car_yaw)
+            self.cte_pub.publish(current_cte)
 
     def waypoints_cb(self, waypoints):
         # Ensure we only get initial full list of waypoints as simulator keeps publishing
@@ -135,6 +141,17 @@ class WaypointUpdater(object):
 
         return closest_index
 
+    def get_cte(self, waypoints, yaw):
+
+        # convert global coordinates waypoints to vehicle's coordinates
+        diff_x = [wp.pose.pose.position.x - self.ego_pos.position.x for wp in waypoints]
+        diff_y = [wp.pose.pose.position.y - self.ego_pos.position.y for wp in waypoints]
+        translated_x = [x*math.cos(-yaw) - y*math.sin(-yaw) for x, y in zip(diff_x, diff_y)]
+        translated_y = [x*math.sin(-yaw) + y*math.cos(-yaw) for x, y in zip(diff_x, diff_y)]
+
+        polynomial = np.polyfit(translated_x, translated_y, 3)
+
+        return np.polyval(polynomial, 0)
 
 if __name__ == '__main__':
     try:
