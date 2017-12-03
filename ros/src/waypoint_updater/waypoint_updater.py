@@ -57,9 +57,11 @@ class WaypointUpdater(object):
 
             #return the index of the closest waypoint ahead of us
             closest_idx_waypoint = self.closest_waypoint_ahead(car_x, car_y, car_yaw, self.wps.waypoints)
+            # get sparse waypoints indices
+            waypoint_idx_list = self.get_sparse_waypoint_indices(closest_idx_waypoint, LOOKAHEAD_WPS, 1.0, car_yaw)
 
             #final waypoints is a subset of original set of waypoints
-            self.final_wps.waypoints = self.wps.waypoints[closest_idx_waypoint:closest_idx_waypoint+LOOKAHEAD_WPS]
+            self.final_wps.waypoints = [self.wps.waypoints[index] for index in waypoint_idx_list]
 
             #check we didn't reach the end of the list and otherwise loopback to start of the list
             if len(self.final_wps.waypoints) < LOOKAHEAD_WPS:
@@ -92,6 +94,7 @@ class WaypointUpdater(object):
             # We need to get a full copy as otherwise we just get a reference
             self.wps = copy.copy(waypoints)
             self.final_wps = copy.copy(waypoints)
+            self.wps_len = len(self.wps.waypoints)
 
     def traffic_cb(self, msg):
         # TODO: Callback for /traffic_waypoint message. Implement
@@ -152,6 +155,47 @@ class WaypointUpdater(object):
         polynomial = np.polyfit(translated_x, translated_y, 3)
 
         return np.polyval(polynomial, 0)
+
+    def get_sparse_waypoint_indices(self, closest_waypoint_index, n_waypoints, min_distance, yaw):
+        """
+        Create a list of sparse waypoints starting from closest_waypoint_index.
+        The distance between each waypoints is set larger than min_distance.
+        """
+
+        waypoint_indices = [closest_waypoint_index]
+        base_index = closest_waypoint_index
+        target_index = closest_waypoint_index + 1
+
+        # If target_index is out of wps size, it is set zero.
+        if self.wps_len <= target_index:
+            target_index = 0
+
+        while len(waypoint_indices) < n_waypoints:
+
+            base = self.wps.waypoints[base_index].pose.pose.position
+            target = self.wps.waypoints[target_index].pose.pose.position
+            diff_x = target.x - base.x
+            diff_y = target.y - base.y
+
+            # Define unit vector for car orientation in global (x, y) coordinates
+            orient_x, orient_y = math.cos(yaw), math.sin(yaw)
+            is_ahead = (orient_x * diff_x + orient_y * diff_y) > 0
+
+            distance = math.sqrt(diff_x**2 + diff_y**2)
+
+            if distance >= min_distance and is_ahead:
+
+                waypoint_indices.append(target_index)
+                base_index = target_index
+
+            target_index += 1
+
+            # If target_index is out of wps size, it is set zero.
+            if self.wps_len <= target_index:
+                target_index = 0
+
+        return waypoint_indices
+
 
 if __name__ == '__main__':
     try:
