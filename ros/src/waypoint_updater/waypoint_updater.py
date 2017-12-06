@@ -72,20 +72,20 @@ class WaypointUpdater(object):
                 self.final_wps.waypoints = [self.wps.waypoints[index] for index in waypoint_idx_list]
 
                 #check we didn't reach the end of the list and otherwise loopback to start of the list
-                if len(self.final_wps.waypoints) < LOOKAHEAD_WPS:
-                    extra_points_needed = LOOKAHEAD_WPS - len(self.final_wps.waypoints)
+                # if len(self.final_wps.waypoints) < LOOKAHEAD_WPS:
+                #     extra_points_needed = LOOKAHEAD_WPS - len(self.final_wps.waypoints)
 
-                    # we need to get points from the start of the list ensuring next point is closest ahead
-                    last_x = self.wps.waypoints[-1].pose.pose.position.x
-                    last_y = self.wps.waypoints[-1].pose.pose.position.y
-                    last_x2 = self.wps.waypoints[-2].pose.pose.position.x
-                    last_y2 = self.wps.waypoints[-2].pose.pose.position.y
-                    last_yaw = math.atan2(last_y - last_y2, last_x - last_x2)
-                    # we don't include last points of the list to ensure we go back to the beginning of the list
-                    first_extra_point = self.closest_waypoint_ahead(last_x, last_y, last_yaw, self.wps.waypoints[0:-10])
+                #     # we need to get points from the start of the list ensuring next point is closest ahead
+                #     last_x = self.wps.waypoints[-1].pose.pose.position.x
+                #     last_y = self.wps.waypoints[-1].pose.pose.position.y
+                #     last_x2 = self.wps.waypoints[-2].pose.pose.position.x
+                #     last_y2 = self.wps.waypoints[-2].pose.pose.position.y
+                #     last_yaw = math.atan2(last_y - last_y2, last_x - last_x2)
+                #     # we don't include last points of the list to ensure we go back to the beginning of the list
+                #     first_extra_point = self.closest_waypoint_ahead(last_x, last_y, last_yaw, self.wps.waypoints[0:-10])
 
-                    #we complete our list to desired number of points
-                    self.final_wps.waypoints.extend(self.wps.waypoints[first_extra_point:first_extra_point+extra_points_needed])
+                #     #we complete our list to desired number of points
+                #     self.final_wps.waypoints.extend(self.wps.waypoints[first_extra_point:first_extra_point+extra_points_needed])
 
                 if len(self.final_wps.waypoints) != LOOKAHEAD_WPS:
                     rospy.logwarn("List of /final_waypoints does not contain target number of elements")
