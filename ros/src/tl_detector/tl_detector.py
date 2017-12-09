@@ -10,6 +10,8 @@ from light_classification.tl_classifier import TLClassifier
 import tf
 import cv2
 import yaml
+import rospy
+import math
 
 STATE_COUNT_THRESHOLD = 3
 
@@ -70,7 +72,15 @@ class TLDetector(object):
         """
         self.has_image = True
         self.camera_image = msg
-        light_wp, state = self.process_traffic_lights()
+
+        if self.pose and self.waypoints:
+
+            light_wp, state = self.process_traffic_lights()
+
+        else:
+
+            light_wp = -1
+            state = TrafficLight.UNKNOWN
 
         '''
         Publish upcoming red lights at camera frequency.
@@ -100,8 +110,27 @@ class TLDetector(object):
             int: index of the closest waypoint in self.waypoints
 
         """
-        #TODO implement
-        return 0
+
+        pos_x = pose.position.x
+        pos_y = pose.position.y
+
+        quaternion = (pose.orientation.x, pose.orientation.y,
+                      pose.orientation.z, pose.orientation.w)
+        euler = tf.transformations.euler_from_quaternion(quaternion)
+        yaw = euler[2]
+
+        orient_x, orient_y = math.cos(yaw), math.sin(yaw)
+
+        waypoints_ahead = [(n, wp) for (n, wp) in enumerate(self.waypoints.waypoints)
+                           if (orient_x * (wp.pose.pose.position.x - pos_x) +
+                               orient_y * (wp.pose.pose.position.y - pos_y)) > 0]
+
+        # Extract closest waypoint
+        closest_waypoint = min(waypoints_ahead,
+                               key = lambda wpidx: (wpidx[1].pose.pose.position.x - pos_x) ** 2
+                                                   + (wpidx[1].pose.pose.position.y - pos_y) ** 2)
+
+        return closest_waypoint[0]
 
     def get_light_state(self, light):
         """Determines the current color of the traffic light
@@ -135,8 +164,27 @@ class TLDetector(object):
 
         # List of positions that correspond to the line to stop in front of for a given intersection
         stop_line_positions = self.config['stop_line_positions']
+
         if(self.pose):
-            car_position = self.get_closest_waypoint(self.pose.pose)
+            car_position_index = self.get_closest_waypoint(self.pose.pose)
+
+            minimum_distance = 500
+
+            for stop_line_index, stop_line_position in enumerate(stop_line_positions):
+
+                stop_line_x = stop_line_position[0]
+                stop_line_y = stop_line_position[1]
+
+                diff_x = stop_line_x - self.waypoints.waypoints[car_position_index].pose.pose.position.x
+                diff_y = stop_line_y - self.waypoints.waypoints[car_position_index].pose.pose.position.y
+
+                distance = math.sqrt(diff_x**2 + diff_y**2)
+
+                if distance < minimum_distance:
+
+                    light_wp = stop_line_positions[stop_line_index]
+                    minimum_distance = distance
+                    light = True
 
         #TODO find the closest visible traffic light (if one exists)
 
