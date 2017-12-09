@@ -5,7 +5,7 @@ import numpy as np
 
 class BatchGenerator:
 
-    def __init__(self, image_paths, labels, batch_size):
+    def __init__(self, image_paths, labels, batch_size, width, height):
 
         self.image_paths = image_paths
         self.labels = labels
@@ -35,18 +35,20 @@ class BatchGenerator:
 
     def get_batch_generator(self):
 
-        sklearn.utils.shuffle(self.image_paths, self.labels)
+        while True:
 
-        for image_path, label in zip(self.image_paths, self.labels):
+            sklearn.utils.shuffle(self.image_paths, self.labels)
 
-            image = cv2.imread(image_path)
-            one_hot_label = self.get_one_hot_label(label)
+            for image_path, label in zip(self.image_paths, self.labels):
 
-            if not(image.shape[0] == self.height and image.shape[1] == self.width):
+                image = cv2.imread(image_path)
+                one_hot_label = self.get_one_hot_label(label)
 
-                image = cv2.resize(image, (self.height, self.width))
+                if not(image.shape[0] == self.height and image.shape[1] == self.width):
 
-            self.image_batch.append(image)
+                    image = cv2.resize(image, (self.height, self.width))
+
+                self.image_batch.append(image)
             self.label_batch.append(one_hot_label)
 
             if (len(self.image_batch) is self.batch_size) and (len(self.label_batch) is self.batch_size):

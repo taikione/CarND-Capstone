@@ -58,6 +58,9 @@ def get_train_model():
 
 def main():
 
+    WIDTH = 224
+    HEIGHT = 224
+
     # path to dataset
     data_directory = "path/to/tl_images_dataset"
 
@@ -83,8 +86,8 @@ def main():
 
     batch_size = 4
 
-    train_batch_generator = generator.BatchGenerator(train_image_paths, train_labels, batch_size)
-    valid_batch_generator = generator.BatchGenerator(valid_image_paths, valid_labels, batch_size)
+    train_batch_generator = generator.BatchGenerator(train_image_paths, train_labels, batch_size, WIDTH, HEIGHT)
+    valid_batch_generator = generator.BatchGenerator(valid_image_paths, valid_labels, batch_size, WIDTH, HEIGHT)
 
     # get model
     model = get_train_model()
@@ -107,7 +110,8 @@ def main():
     test_labels = load_json(test_label_json_path)
 
     test_image_paths = [os.path.join(data_directory, p) for p in test_image_paths]
-    test_images = np.array([cv2.imread(path) for path in test_image_paths])
+    test_images = np.array([cv2.resize(cv2.imread(path), (WIDTH, HEIGHT))  for path in test_image_paths])
+
     test_one_hot_labels = np.array([get_one_hot_label(label) for label in test_labels])
 
     loss, accuracy = model.evaluate(test_images, test_one_hot_labels, verbose=0)
