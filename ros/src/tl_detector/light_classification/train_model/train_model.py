@@ -51,7 +51,7 @@ def get_train_model():
 
     model = keras.models.Model(inputs=img_input, outputs=preds)
     adam = keras.optimizers.Adam(lr=0.0001)
-    model.compile(optimizer=adam, loss="binary_crossentropy")
+    model.compile(optimizer=adam, loss="binary_crossentropy", metrics=['accuracy'])
 
     return model
 
@@ -107,15 +107,17 @@ def main():
     test_label_json_path = os.path.join(data_directory, "json", "test_label.json")
 
     test_image_paths = load_json(test_image_json_path)
+    test_image_paths = [os.path.join(data_directory, p) for p in test_image_paths]
     test_labels = load_json(test_label_json_path)
 
-    test_image_paths = [os.path.join(data_directory, p) for p in test_image_paths]
-    test_images = np.array([cv2.resize(cv2.imread(path), (WIDTH, HEIGHT))  for path in test_image_paths])
+    test_batch_generator = generator.BatchGenerator(test_image_paths, test_labels, batch_size, WIDTH, HEIGHT)
 
-    test_one_hot_labels = np.array([get_one_hot_label(label) for label in test_labels])
+    loss, accuracy = model.evaluate_generator(
+        test_batch_generator.get_batch_generator(),
+        test_batch_generator.get_images_count() / batch_size
+    )
 
-    loss, accuracy = model.evaluate(test_images, test_one_hot_labels, verbose=0)
-    print("Accuracy = {:.2f}".format(accuracy))
+    print("Test Accuracy = {:.2f}".format(accuracy))
 
 
 if __name__ == "__main__":

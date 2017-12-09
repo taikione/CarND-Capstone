@@ -49,14 +49,14 @@ class BatchGenerator:
                     image = cv2.resize(image, (self.height, self.width))
 
                 self.image_batch.append(image)
-            self.label_batch.append(one_hot_label)
+                self.label_batch.append(one_hot_label)
 
-            if (len(self.image_batch) is self.batch_size) and (len(self.label_batch) is self.batch_size):
+                if (len(self.image_batch) is self.batch_size) and (len(self.label_batch) is self.batch_size):
 
-                yield (sklearn.utils.shuffle(np.array(self.image_batch), np.array(self.label_batch)))
+                    yield (sklearn.utils.shuffle(np.array(self.image_batch), np.array(self.label_batch)))
 
-                self.image_batch.clear()
-                self.label_batch.clear()
+                    self.image_batch.clear()
+                    self.label_batch.clear()
 
 
 
