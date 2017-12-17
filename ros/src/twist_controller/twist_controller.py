@@ -29,7 +29,7 @@ class Controller(object):
         self.brakeLatch = False
 
         self.yaw_controller = YawController(self.wheel_base, self.steer_ratio,
-                                            0, self.max_let_accel, self.max_steer_angle)
+                                            0.5, self.max_let_accel, self.max_steer_angle)
 
     def control(self, target_linear_velocity, target_angular_velocity,
                 current_linear_velocity, dbw_status, log_handle):
