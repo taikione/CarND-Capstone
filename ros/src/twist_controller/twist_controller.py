@@ -9,7 +9,8 @@ DT = 1./50.
 
 
 class Controller(object):
-    def __init__(self, steer_ratio, decel_limit, accel_limit, max_steer_angle, wheel_base, max_let_accel):
+    def __init__(self, steer_ratio, decel_limit, accel_limit, max_steer_angle, wheel_base, max_let_accel,
+                 max_throttle_percent, max_braking_percent):
 
         self.steer_ratio = steer_ratio
         self.decel_limit = decel_limit
@@ -17,9 +18,16 @@ class Controller(object):
         self.max_steer_angle = max_steer_angle
         self.max_let_accel = max_let_accel
         self.wheel_base = wheel_base
+        self.max_braking_percent = max_braking_percent
 
-        self.throttle_pid = PID(0.1, 0.001, 0, 0, 0.4)
-        self.brake_pid = PID(60., 1, 0, 0, 100)
+        # We use proportional factors between Carla and the simulator.
+        # The simulator only was used for calibration. Max values for Carla were extracted through
+        # "dbw_test.py" and provided rosbag
+        calib_throttle = max_throttle_percent / 0.4
+        calib_brake = max_braking_percent / 100
+        self.throttle_pid = PID(0.1 * calib_throttle, 0.001 * calib_throttle, 0, 0, max_throttle_percent)
+        self.brake_pid = PID(60. * calib_brake, 1. * calib_brake, 0, 0, max_braking_percent)
+
         tau = 0.1
         self.throttle_filter = LowPassFilter(tau, DT)
         self.brake_filter = LowPassFilter(tau, DT)
@@ -29,7 +37,7 @@ class Controller(object):
         self.brakeLatch = False
 
         self.yaw_controller = YawController(self.wheel_base, self.steer_ratio,
-                                            0, self.max_let_accel, self.max_steer_angle)
+                                            0.5, self.max_let_accel, self.max_steer_angle)
 
     def control(self, target_linear_velocity, target_angular_velocity,
                 current_linear_velocity, dbw_status, log_handle):
@@ -66,7 +74,7 @@ class Controller(object):
             # If we're about to come to a stop, clamp the brake command to some value to hold the vehicle in place
             if current_linear_velocity < .1 and target_linear_velocity == 0:
                 throttle = 0
-                brake = 50
+                brake = self.max_braking_percent
                 
             # implement steering controller
             steer_target = self.yaw_controller.get_steering(target_linear_velocity,
