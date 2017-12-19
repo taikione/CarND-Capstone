@@ -1,170 +1,110 @@
 # Self driving car system integration project
 ## Implemented by Team Rushers
 
-#### Dec 15, 2017
+![alt text](imgs/Udacity_SelfDrivingCar.png)
 
 # Objective
 
-The objective of the project is to control CARLAs throttle, steering and brakes to navigate map waypoints to successfully drive the car on a highway. The car is expected to follow lanes, traffic lights and objects and plan a trajectory to follow based on the waypoints. The car should be able to classify “Red”, “Green”, and “Yellow” lights and be able to stop/start/slow down based on the traffic signal.
-Before running our code on CARLA we developed the code to work in a simulator. 
-The simulator works in a very similar way to CARLA as all ROS nodes and topics are same. So if our system works in the simulator, we expect that it should also work on CARLA. 
+The objective of the project is to build a self driving car by controlling its throttle, steering and brakes to navigate on a map. The car is equiped with numerous sensors (Lidar, Radar, cameras, etc) that we can access to make it aware of its environment. It is expected to follow lanes, detect traffic lights and objects and plan a trajectory based on pre-set waypoints. It should be able to classify “Red”, “Green”, and “Yellow” lights and stop/start/slow down based on the traffic signal.
 
-# The system architecture and principles behind it
+Before running our program on Carla (Udacity's self driving car) we developed our code to work in a simulator. Even though simplified, it was able to let us quickly test our code without having access to the actual car and sensors. The simulator works in a very similar way as CARLA with communication performed through ROS nodes and topics. After having optimized our code and our controls in the simulator, we calibrated our commands based on Carla's specifications to see how it would perform on a real car.
 
-The system architecture consists of the following modules:
+Results to follow.
 
-## Perception
+# Team
 
-Traffic light detection - We used a deep neural net to detect if the upcoming traffic light is red or not. We trained the classifier once with images from the simulator and once with real images from the ROS bag. A detailed description of the architecture and training parameters can be found in the respective section below (under additional resources implemented) 
-We employed the MobileNet architecture to efficiently detect / classify traffic lights. We applied transfer learning … and implemented on two modes as follows: 
-•	Simulator mode: classifies whole images as either red/green/yellow. The model was trained with several datasets using the Tensorflow Image Retraining Example 
-•	Test-site mode: we employed <> framework to locate a traffic light… 
+• Boris Dayma, Team Lead
 
-## Planning
-The waypoint updater node publishes a queue of n waypoints ahead of the vehicle position, each with a target velocity. For the simulator, n=100 is sufficient. For the site (the real-world test track), we reduce to n=20. We dequeued traversed waypoints and enqueued new points, preserving and reusing those in the middle. When a light-state changes, the entire queue is updated. The vehicle stops at the final base waypoint. This module is performed using the ROS Package Waypoint updater which is explained as below:
-o	Waypoint Updater - sets target velocity for each waypoint based on upcoming traffic lights and obstacles.  This node subscribed to the nodes /base_waypoints, /current_pose, /obstacle_waypoint, and /traffic_waypoint topics, and published a list of waypoints ahead of the car with target velocities to the /final_waypoints topic.
+• Chris Ferone
 
-## Control subsystems
+• Taiki Nishime
 
-The control subsystem is implemented using the ROS Package drive-by-wire which adjusts throttle and brakes according to the velocity targets published by the waypoint follower (which is informed by the waypoint updater node). If the list of waypoints contains a series of descending velocity targets, the PID velocity controller (in the twist controller component of DBW) will attempt to match the target velocity
-o	DBW (Drive by Wire) - takes target trajectory information as input and sends control commands to navigate the vehicle.  The dbw_node subscribes to the /current_velocity topic along with the /twist_cmd topic to receive target linear and angular velocities. Additionally, this node subscribes to /vehicle/dbw_enabled, which indicates if the car is under dbw or driver control. This node will publish throttle, brake, and steering commands to the /vehicle/throttle_cmd, /vehicle/brake_cmd, and /vehicle/steering_cmd topics.
+• Pabasara Karunanayake
 
-![alt text](imgs/architecture.png)
+• Ayanangshu Das
 
-## Implementation Nodes
+# General system architecture
 
 The diagram below illustrates the system architecture. The autonomous vehicle controller is composed of three major units: perception, planning, and control.
 
 ![alt text](imgs/Implementation%20Node.png)
-  
-  a: /camera/image_raw
-  b: /current_pose
-  c: /current_velocity
-  d: /vehicle/dbw_enabled
-  e: /traffic_waypoint
-  f: /base_waypoints
-  g: /final_waypoints
-  h: /twist_cmd
-  i: /vehicle/throttle_cmd
-  j: /vehicle/brake_cmd
-  k: /vehicle/steering_cmd
 
-# Operation
+The system architecture consists of the following modules described in the next sections.
 
-There are three modes in which the controller operates:
-•	site: When at the test site, this mode is launched. This mode can be run simultaneously with a rosbag to test the traffic light     classifier
-•	sitesim: emulates the test site in the simulator at the first traffic light
-•	styx: When using the term3 simulator, this mode is launched. The simulator communicates through server.py and bridge.py
-These modes are started by roslaunch. For example, to run the styx (simulator) version we run:
-roslaunch launch/styx.launch
+## Perception
+The existing localization module was based on radar and lidar data measurements and provided the current position, orientation and speed of the vehicle.
 
-# Team
+We developed a deep neural net to detect upcoming traffic lights as well as their color. We decided to use [a transfer learning approach](https://arxiv.org/pdf/1310.1531v1.pdf) based on a [MobileNet architecture](https://arxiv.org/pdf/1704.04861.pdf) previously trained on the [ImageNet dataset](http://www.image-net.org/). The neural network was then retrained using images from the simulator or real images from previously recorded ROS bags. It was able to efficiently detect and classify traffic lights.
 
-•	Boris Dayma, Lead
-•	Chris Ferone
-•	Taiki Nishime
-•	Pabasara Karunanayake
-•	Ayanangshu Das
+It is interesting to note that we detect the traffic light as well as identify its color within the same neural network. We don't need to first identify its position through a bounded box. Our only concern is actually only to know that there is a red or orange traffic light somewhere ahead of us, and that we need to slow down and come to a full stop at its position, already located in our map.
 
-# Results
-
-•	Video from the dash camera onboard the test vehicle:
-•	Point cloud visualization:  
-•	A map of the test run can be found at <>
-•	Log file, ROS bag, and feedback:  
-  Below is a visualization of the LIDAR point cloud from the team's test run on the autonomous car. <>
-
-# Additional Resources Implemented
-
-## Traffic Light Image Classification
-
-The perception subsystem dynamically classifies the color of traffic lights in front of the vehicle. In the given simulator and test site environment, the car faces a single traffic light or a set of 3 traffic lights in the same state (green, yellow, red). We assume it is not possible to have multiple traffic lights in the different states at the same time.
-We have considered classifying the entire image using CNN approach to solve the traffic light classification task. We used different set of models and got the following results
-
--Small mobilenet (2Mo): 79.2% test accuracy (664 test samples)
-Our program did an exponential moving average on the probability of seeing a red light on each frame and it seemed to be working while it had a test accuracy of about 74%. We decided to use the larger model if it was fast enough; otherwise we just used the smaller model
-- Large mobilenet (17Mo): 90.4% test accuracy (664 test samples)
-
-![alt text](imgs/training.jpg)
-
-Considering the fact that traffic lights are always in the same state, and focusing on the creation of a lightweight and fast model, we've chosen the direction of classifying the entire image for the simulator mode of operation. This approach uses a Convolutional Neural Network, which takes a whole image from the front camera as an input and predicts the traffic light state. We used the transfer learning technique on the MobileNet architecture with the Tensorflow Image Retraining Example 
-
-## Dataset
-
-There are multiple datasets, available for model training:
-•	images from the Udacity Simulator (images as well as the ground truth from the frontal camera are available as a ROS topic);
-https://drive.google.com/open?id=0Bw5abyXVejvMci03bFRueWVXX1U
-•	rosbag, captured on the Udacity's test site;
-https://drive.google.com/file/d/0B2_h37bMVw3iYkdJTlRSUlJIamM/view
-
-## Image Preprocessing
-
-On the image pre-processing step we've applied multiple visual transformations:
-•	random cropping of the image;
-•	rotation on the random angle (+/- 5 degrees);
-•	random flipping of the up to 20% images;
-•	random color jittering;
-Cropping is done by placing a bounding box at a random position in the full image. The cropping parameter controls the size of that box relative to the input image. If it's zero, then the box is the same size as the input and no cropping is performed. If the value is 50%, then the crop box will be half the width and height of the input.
-
-Scaling is a lot like cropping, except that the bounding box is always centered and its size varies randomly within the given range. For example if the scale percentage is zero, then the bounding box is the same size as the input and no scaling is applied. If it's 50%, then the bounding box will be in a random range between half the width and height and full size.
-
-## Neural Network Model
-
-"Simple transfer learning with MobileNet model" example from TensorFlow was used to re-train our model.
-We started with a MobileNet model pre-trained on the ImageNet images, and trained a new set of fully-connected layers with dropout, which can recognize our traffic light classes of images. The model works with the image dimensions 224x224x3. The top fully connected layer receives as input a 1001-dimension feature vector (bottleneck_tensor_size = 1001) for each image. 
+One of the main advantages of MobileNets is that they are efficient while using much less memory and computing power than traditional neural networks, having been developed mainly for embedded devices. It was particularly adapted for our application in which we need to process pictures very quickly. The architecture of MobileNet has been reproduced herebelow:
 
 ![alt text](imgs/Network.png)
 
-MobileNets are neural networks constructed for the purpose of running efficiently (high FPS, low memory footprint) on mobile and embedded devices. MobileNets achieve this with 3 techniques:
-1.	Perform a depth-wise convolution followed by a 1x1 convolution rather than a standard convolution. The 1x1 convolution is called a pointwise convolution if it's following a depth-wise convolution. The combination of a depth-wise convolution followed by a pointwise convolution is sometimes called a separable depth-wise convolution.
-2.	Use a "width multiplier" - reduces the size of the input/output channels, set to a value between 0 and 1.
-3.	Use a "resolution multiplier" - reduces the size of the original input, set to a value between 0 and 1
+We cannot develop an efficient neural network without a good dataset. We developed two separate classifiers for the simulation and for the actual site. They were based on recorded videos from the cameras, extracted and classified manually. We then augmented our dataset with random cropping, scaling, adjustment of brightness.
 
-These 3 techniques reduce the size of cumulative parameters and therefore the computation required. Of course, generally models with more parameters achieve a higher accuracy. MobileNets are no silver bullet, while they perform very well larger models will outperform them. MobileNets are designed for mobile devices, NOT cloud GPUs. The reason we're using them in this lab is automotive hardware is closer to mobile or embedded devices than beefy cloud GPUs.
+Our classifer for simulation images was able to reach a test accuracy of 93.3% (on 744 test samples).
 
-## Accuracy on the simulator data
+![alt text](imgs/TF%20training%20-%20simulation.png)
 
-![alt text](imgs/pasted_image_at_2017_12_13_10_02_am.png)
-Figure 1:Depicts Lines on the top are testing/validation of big model (17Mo) and lines at the bottom are testing/validation of small model (2Mo)
+Our classifer for site images was able to reach a test accuracy of 87.5% (on 640 test samples).
 
-## Accuracy on the udacity’s test track data
+![alt text](imgs/TF%20training%20-%20site.png)
 
-<>
+These accuracies are very high but not sufficient to have a fully reliable detection without adding other mechanisms. We use an exponential moving average to consider previous images and increase the probability of confidence we detected correctly the traffic lights, even though it can add a small lag of a few 1/10th of seconds. This proved to be an efficient method for detecting reliably traffic lights through different conditions.
 
-# Waypoint Updater
+## Planning
+The route to follow was provided as a list of waypoints. We developed a "waypoint updater" node whose purpose was to publish a list of n waypoints ahead of the vehicle position, with a target velocity.
 
-## Implementation
+This node uses the car position, current velocity, list of waypoints from the track, as well as our traffic light classifier in order to plan for the upcoming path and target speeds to follow. It is set so that it can anticipate our general path for the upcoming few seconds (5-10 seconds is enough) in order to have smooth transitions between states (accelerating, slowing down, stopping), minimizing acceleration and jerk for a comfortable ride.
 
-Waypoint updater publishes a queue of n waypoints ahead of the vehicle position, each with a target velocity. For the simulator, n=100 should be sufficient. For the site (the real-world test track), we'll need n=20. We dequeued traversed waypoints and enqueued new points, preserving and reusing those in the middle. When a light-state changes, the entire queue may need updating. The vehicle should stop at the final base waypoint in the simulator (the default provided by the waypoint loader). This is overridden for the test-site, enabling the vehicle to loop around the track repeatedly.
-Initialization of queue:
-•	Create a persisted queue
-•	Locate closest waypoint (in the base waypoint list) ahead of current position of vehicle and enqueued n waypoints.
-•	Persist the index of the last retrieved point in the base list.
-Operation cycle at a frequency of 2 Hz:
+## Control
+The objective of the control module is to follow as close as possible our plan.
 
-Operation cycle at a frequency of 2 Hz:
+We adjust throttle, brake and steering according to the targets published by the waypoint follower (informed itself by the waypoint updater node).
 
-•	Manage waypoint queue: Dequeue consumed waypoints with coordinates "behind" the current vehicle position. Enqueue waypoints from base list starting from last until queue is restored to n in length. (Unless final is encountered).
-•	Update velocity: If red/yellow light NOT within range (4 m for site, 62 m for simulator), set waypoint velocity to defaults (10 km/h for site, 40 km/h for simulator) given in base list. If red/yellow within range, update each waypoint velocity so that the vehicle comes to a halt at the stop-line waypoint. Decrease velocity at a constant rate of -1.0 m/s2. Velocity beyond the stop line should be set to zero.
+Since throttle & brake commands cannot be directly extrapolated from our target speed, we use pid's to control them. Parameters of the pid's are adjusted so that we follow as closely as possible our targets. We ensure that we don't keep alternating between accelerating and braking by accepting some tolerances on the target speed.
 
-## Optimization
+![alt text](imgs/setting%20PID%20for%20throttle.png)
 
-As the vehicle moved along a path, the waypoint updater made changes to the planned path. Presently, there are no dynamic obstacles other than the traffic lights. In theory, we can make a plan and then simply follow that plan, add to the end of that plan, and make adjustments when a traffic light changes state.
-Currently, the code creates a completely new list of waypoints on each cycle. (This is inefficient...as an initial draft.) This list contains the next <> waypoints from our present position. The re-planning event occurs at a rate of once per pose callback (<> times per second). 
-Ideally this planning can occur far less frequently. For example only when a change in traffic light is detected or as we near the end of our current waypoint list. Alternatively we might add a few new waypoints to the end of our current list (and avoid re-creating the entire list).
-An optimized updater is important to the Drive-By-Wire node because it will reduce unnecessary accelerations due to plan changes. For instance, when the vehicle is approaching a red traffic light, a ramp down in velocity is planned. If the one plan is followed, the acceleration will be smoothly executed. On the other hand, presently the updater replans too frequently, and because the vehicle is in a new location, a new velocity ramp is created. This leads to interruptions in the deceleration plan to the stop line. 
+The steering is controlled taking into consideration the characteristics of the car (steering ratio, extreme values, current speed, wheel base) in order to calculate our necessary direction angle.
 
-# Drive By Wire
+Finally, we use low pass filters on all our commands to avoid noise and create smoother controls.
 
-## Velocity Targets (Stepped)
+Braking command (in yellow) before low pass filter:
 
-The drive-by-wire node adjusts throttle and brakes according to the velocity targets published by the waypoint follower (which is informed by the waypoint updater node). If the list of waypoints contains a series of descending velocity targets, the PID velocity controller (in the twist controller component of DBW) will attempt to match the target velocity. 
-In the chart below, for the chart with title speed, we transition from 13 mps to 0 mps through a series of decreasing velocities across a plurality of waypoints. The blue line represents the target velocity, green is actual velocity. Green is braking on a scale from 0 to 1. The x-axis is the number of frames at 50 FPS (rate = rospy.Rate (50)).
+![alt text](imgs/setting%20PID%20for%20brake.png)
 
-![alt text](imgs/figure_2-2.png)
+Braking command (in yellow) after low pass filter is much smoother:
 
+![alt text](imgs/setting%20PID%20for%20brake_smooth.png)
 
-# The original readme from Udacity
+Due to differences of control in the simulator and on the real car we adjust our control commands proportionnally based on the intended use.
+
+# Operation
+
+Different roslaunch files can be used with our system to adapt quickly to different environments. In particular, the following modes have been implemented:
+
+* simulation mode, which can be used with the [Udacity simulator](https://github.com/udacity/CarND-Capstone/releases/).
+
+* site mode, which can directly be used on Carla.
+
+We tested our program in the simulator until we reached satisfying results.
+
+![alt text](imgs/simulator.png)
+
+The car was following its lane with great accuracy, stopping at red lights, and acted smoothly, both in terms of steering as well as acceleration and braking.
+
+![alt text](imgs/Car_performance.png)
+
+We decided to proceed with implementing our code on a real car.
+
+# Results
+
+Coming soon!!!
+
+# Original Readme from [Udacity](https://github.com/udacity/CarND-Capstone)
 
 This is the project repo for the final project of the Udacity Self-Driving Car Nanodegree: Programming a Real Self-Driving Car. For more information about the project, see the project introduction [here.](https://classroom.udacity.com/nanodegrees/nd013/parts/6047fe34-d93c-4f50-8336-b70ef10cb4b2/modules/e1a23b06-329a-4684-a717-ad476f0d8dff/lessons/462c933d-9f24-42d3-8bdc-a08a5fc866e4/concepts/5ab4b122-83e6-436d-850f-9f4d26627fd9)
 
